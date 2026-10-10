@@ -15,10 +15,13 @@ function setStatus(message, type) {
   statusEl.className = type;
 }
 
-// Disable the buttons while any request runs
+// Disable every button while any request runs
 function setBusy(isBusy) {
   loadBtn.disabled = isBusy;
   submitBtn.disabled = isBusy;
+  document.querySelectorAll(".delete-btn").forEach(function (button) {
+    button.disabled = isBusy;
+  });
 }
 
 // One reusable function for every request
@@ -45,6 +48,56 @@ function validateTitle(title) {
   return "";
 }
 
+/*
+  How deleting works with JSONPlaceholder:
+  JSONPlaceholder only pretends to save changes. A note created with POST gets
+  the id 101 but the server never stores it. A real DELETE for that note can
+  answer 404. Deleted server notes also come back after a reload because the
+  server never really removes them.
+  My approach:
+  - Every note sends a real DELETE request to /posts/{id}.
+  - Notes created in this page carry the flag isLocal. If the server answers
+    404 for one of those notes I still remove it from the list because it
+    exists only in the page.
+  - Any other failure keeps the note on screen and shows an error message.
+  - I remove notes by object and never by id because every created note
+    gets the same id 101.
+*/
+async function deleteFromServer(note) {
+  try {
+    return await request(`${API_URL}/${note.id}`, { method: "DELETE" });
+  } catch (error) {
+    if (note.isLocal && error.status === 404) {
+      return { status: 404, local: true };
+    }
+    throw error;
+  }
+}
+
+async function deleteNote(note) {
+  setBusy(true);
+  setStatus("Deleting note...", "loading");
+
+  try {
+    const result = await deleteFromServer(note);
+    notes = notes.filter(function (item) {
+      return item !== note;
+    });
+    render();
+
+    if (result.local) {
+      setStatus("Note removed. The practice server never stored it.", "success");
+    } else {
+      setStatus(`Note deleted (status ${result.status}).`, "success");
+    }
+  } catch (error) {
+    console.error(error);
+    setStatus("Sorry, we could not delete that note. Please try again.", "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
 function render() {
   notesList.textContent = "";
 
@@ -69,6 +122,15 @@ function render() {
       body.textContent = note.body;
       item.append(body);
     }
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "delete-btn";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", function () {
+      deleteNote(note);
+    });
+    item.append(deleteBtn);
 
     notesList.append(item);
   });
@@ -113,6 +175,7 @@ async function createNote(event) {
       body: JSON.stringify({ title: title, body: body, userId: 1 }),
     });
 
+    result.data.isLocal = true;
     notes.unshift(result.data);
     render();
     setStatus(`Note created (status ${result.status}, id ${result.data.id}).`, "success");
