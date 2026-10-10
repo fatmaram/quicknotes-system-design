@@ -1,6 +1,10 @@
 const API_URL = "https://jsonplaceholder.typicode.com/posts";
 
 const loadBtn = document.querySelector("#load-btn");
+const form = document.querySelector("#note-form");
+const titleInput = document.querySelector("#title-input");
+const bodyInput = document.querySelector("#body-input");
+const submitBtn = document.querySelector("#submit-btn");
 const statusEl = document.querySelector("#status");
 const notesList = document.querySelector("#notes-list");
 
@@ -9,6 +13,12 @@ let notes = [];
 function setStatus(message, type) {
   statusEl.textContent = message;
   statusEl.className = type;
+}
+
+// Disable the buttons while any request runs
+function setBusy(isBusy) {
+  loadBtn.disabled = isBusy;
+  submitBtn.disabled = isBusy;
 }
 
 // One reusable function for every request
@@ -23,6 +33,16 @@ async function request(url, options) {
 
   const data = await response.json();
   return { status: response.status, data: data };
+}
+
+function validateTitle(title) {
+  if (title === "") {
+    return "Please enter a title for your note.";
+  }
+  if (title.length > 100) {
+    return "The title must be 100 characters or fewer.";
+  }
+  return "";
 }
 
 function render() {
@@ -55,7 +75,7 @@ function render() {
 }
 
 async function loadNotes() {
-  loadBtn.disabled = true;
+  setBusy(true);
   setStatus("Loading notes...", "loading");
 
   try {
@@ -67,10 +87,45 @@ async function loadNotes() {
     console.error(error);
     setStatus("Sorry, we could not load your notes. Please try again.", "error");
   } finally {
-    loadBtn.disabled = false;
+    setBusy(false);
+  }
+}
+
+async function createNote(event) {
+  event.preventDefault();
+
+  const title = titleInput.value.trim();
+  const body = bodyInput.value.trim();
+  const problem = validateTitle(title);
+
+  if (problem) {
+    setStatus(problem, "error");
+    return;
+  }
+
+  setBusy(true);
+  setStatus("Creating note...", "loading");
+
+  try {
+    const result = await request(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ title: title, body: body, userId: 1 }),
+    });
+
+    notes.unshift(result.data);
+    render();
+    setStatus(`Note created (status ${result.status}, id ${result.data.id}).`, "success");
+    form.reset();
+  } catch (error) {
+    console.error(error);
+    setStatus("Sorry, we could not create your note. Please try again.", "error");
+  } finally {
+    setBusy(false);
   }
 }
 
 loadBtn.addEventListener("click", loadNotes);
+form.addEventListener("submit", createNote);
 
 render();
